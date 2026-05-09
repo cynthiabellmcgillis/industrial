@@ -192,3 +192,53 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 - Do NOT delete tests without approval.
 
 </laravel-boost-guidelines>
+
+# Industrial Policy Digest — Project Notes
+
+## What this app does
+
+A scheduled Artisan command (`digest:industrial-policy`) that, every morning at 5:00am `America/Los_Angeles`, queries Google News RSS for `"industrial policy"` across six publications (NYT, Economist, FT, Foreign Affairs, WSJ, Washington Post), filters to the last 24 hours, and emails an HTML digest via Resend to one or more recipients.
+
+There is no UI, no subscriber model, no queue. Everything runs synchronously inside the scheduled command.
+
+## Key files
+
+- `app/Console/Commands/SendIndustrialPolicyDigest.php` — the command. Builds Google News RSS URLs, fetches via `Http::timeout(10)`, parses with `simplexml_load_string`, filters by `pubDate`, dispatches the mailable. Logs and exits when zero articles match.
+- `app/Mail/IndustrialPolicyDigest.php` — Mailable (Laravel 13 `Envelope`/`Content` style). NOT queued.
+- `resources/views/emails/industrial-policy-digest.blade.php` — inline-styled HTML email, table-based layout for Gmail/Apple Mail compatibility.
+- `routes/console.php` — `Schedule::command(...)->dailyAt('05:00')->timezone('America/Los_Angeles')`.
+- `config/digest.php` — `recipients` parsed from comma-separated `DIGEST_RECIPIENT` env var.
+- `tests/Feature/IndustrialPolicyDigestTest.php` — two Pest smoke tests (positive path with 24h filter, empty-results short-circuit) using `Http::fake()` + `Mail::fake()`.
+
+## Environment variables
+
+```
+MAIL_MAILER=resend
+RESEND_API_KEY=re_...
+MAIL_FROM_ADDRESS="hello@yourverifieddomain.com"   # must be verified in Resend
+MAIL_FROM_NAME="..."
+DIGEST_RECIPIENT=a@example.com,b@example.com       # comma-separated, no spaces required
+```
+
+## Running locally
+
+```
+php artisan digest:industrial-policy   # one-shot real send (uses real RSS, real Resend)
+php artisan schedule:list              # confirm the cron registration
+php artisan test --compact --filter=IndustrialPolicyDigest
+```
+
+## Conventions specific to this project
+
+- The schedule is the source of truth. To change the send time, edit `routes/console.php` and deploy — do not configure timing in Cloud.
+- The Mailable is intentionally **not** `ShouldQueue`. Do not add it. The send is a single Resend HTTP call inside the once-a-day scheduler tick — queueing would add infrastructure for no benefit.
+- Pluralization in the command's terminal output is handled inline (`article`/`articles`, `publication`/`publications`). Keep it that way; no helper.
+- When adding a new publication: extend `PUBLICATIONS` in `SendIndustrialPolicyDigest`. The display name is the array key; the value is the bare domain used in `site:` operator.
+
+## Deployment (Laravel Cloud)
+
+- Cloud app: `industrial` (org default). Environment: `main`. Vanity URL: `https://industrial-main-g7fstd.laravel.cloud`.
+- Push-to-deploy is enabled on `main` — pushing to GitHub kicks off a Cloud build automatically.
+- Scheduler is enabled on the App compute instance. Cloud invokes `schedule:run` every minute; Laravel decides when to fire `digest:industrial-policy` based on `routes/console.php`.
+- Manual trigger on Cloud: `cloud command:run --cmd='php artisan digest:industrial-policy'`.
+- If you ever scale beyond `min/max-replicas=1`, add `->onOneServer()` to the schedule entry to prevent duplicate sends across replicas.
