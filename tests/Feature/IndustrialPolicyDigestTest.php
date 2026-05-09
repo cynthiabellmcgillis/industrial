@@ -23,7 +23,7 @@ function rssFeed(array $items): string
 }
 
 beforeEach(function () {
-    config(['digest.recipient' => 'me@example.com']);
+    config(['digest.recipients' => ['me@example.com', 'other@example.com']]);
     Mail::fake();
 });
 
@@ -49,6 +49,7 @@ test('it sends the digest with parsed articles within 24 hours', function () {
 
     Mail::assertSent(IndustrialPolicyDigest::class, function (IndustrialPolicyDigest $mail) {
         return $mail->hasTo('me@example.com')
+            && $mail->hasTo('other@example.com')
             && count($mail->results) === 6
             && collect($mail->results)->flatten(1)->count() === 6
             && $mail->results['NYT'][0]['title'] === 'Recent industrial policy article';

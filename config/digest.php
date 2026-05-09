@@ -1,5 +1,5 @@
 <?php
 
 return [
-    'recipient' => env('DIGEST_RECIPIENT'),
+    'recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('DIGEST_RECIPIENT', ''))))),
 ];

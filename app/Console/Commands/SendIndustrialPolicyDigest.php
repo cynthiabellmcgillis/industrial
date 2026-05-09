@@ -49,7 +49,7 @@ class SendIndustrialPolicyDigest extends Command
             return self::SUCCESS;
         }
 
-        Mail::to(config('digest.recipient'))->send(new IndustrialPolicyDigest($results));
+        Mail::to(config('digest.recipients'))->send(new IndustrialPolicyDigest($results));
 
         $publicationCount = count($results);
         $articleNoun = $total === 1 ? 'article' : 'articles';
